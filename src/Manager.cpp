@@ -135,11 +135,16 @@ namespace ItemRestrictor
 					if (filter_copy.contains("(")) {
 						static srell::regex pattern(R"(([^\(]*)\(([^)]+)\))");
 						if (srell::smatch matches; srell::regex_search(filter_copy, matches, pattern)) {
-							RE::ActorValue av;
-							float          minLevel;
+							RE::ActorValue  av;
+							float           minLevel;
+							RE::TESFaction* faction = nullptr;
+							logger::info("{}", matches[1].str());
 
 							if (string::is_only_digit(matches[1].str())) {
 								av = string::to_num<RE::ActorValue>(matches[1].str());
+							} else if (const auto factionForm = RE::TESForm::LookupByEditorID<RE::TESFaction>(matches[1].str())) {
+								logger::info("Faction exists");
+								faction = factionForm;
 							} else {
 								av = RE::ActorValueList::GetSingleton()->LookupActorValueByName(matches[1].str());
 							}
@@ -149,7 +154,15 @@ namespace ItemRestrictor
 								minLevel = RE::TESForm::LookupByEditorID<RE::TESGlobal>(matches[2].str())->value;
 							}
 
-							if (const bool match = a_actor->GetActorValue(av) >= minLevel; invert ? !match : match) {
+							if (faction != nullptr && a_actor->IsInFaction(faction)) {
+								logger::info("In the faction");
+								logger::info("minLevel: {}", minLevel);
+								logger::info("faction rank: {}", a_actor->GetFactionRank(faction, isPlayer));
+								if (const bool match = a_actor->GetFactionRank(faction, isPlayer) >= minLevel; invert ? !match : match) {
+									logger::info("Returning true?");
+									return true;
+								}
+							} else if (const bool match = a_actor->GetActorValue(av) >= minLevel; invert ? !match : match) {
 								return true;
 							}
 							a_params.restrictReason = RESTRICT_REASON::kSkill;
@@ -174,6 +187,16 @@ namespace ItemRestrictor
 						case RE::FormType::Race:
 							{
 								match = a_actor->GetRace() == filterForm;
+								return invert ? !match : match;
+							}
+						case RE::FormType::Spell:
+							{
+								match = a_actor->HasSpell(filterForm->As<RE::SpellItem>());
+								return invert ? !match : match;
+							}
+						case RE::FormType::MagicEffect:
+							{
+								match = a_actor->HasMagicEffect(filterForm->As<RE::EffectSetting>());
 								return invert ? !match : match;
 							}
 						default:
